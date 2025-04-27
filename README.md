@@ -39,7 +39,7 @@ Built using **HTML, CSS, Vanilla JavaScript with Vite (Frontend)** and **Bun (Ba
     
 -   **Backend:** Bun
     
-> Note: To bypass Amazon's strict scraping policies, I have used ScraperAPI for implementing a proxy for your convenience.
+> Note: To bypass Amazon's strict scraping policies, I have used ScraperAPI for implementing a proxy for your convenience. You may not need this, but my IP got blacklisted by Amazon after a few scrapes. So, just in case you face the same issue too, this feature is a life-saver.
 
 ----------
 
