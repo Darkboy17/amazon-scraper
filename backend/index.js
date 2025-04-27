@@ -131,7 +131,10 @@ app.get('/api/scrape', async (req, res) => {
   }
 });
 
-// Optional endpoint to check the ScraperAPI account usage and limits if using the proxy
+
+// Optional:
+
+// endpoint to check the ScraperAPI account usage and limits if using the proxy
 app.get('/api/scraperapi/account', async (req, res) => {
   try {
     // Make a GET request to the ScraperAPI account endpoint
@@ -146,6 +149,8 @@ app.get('/api/scraperapi/account', async (req, res) => {
   }
 });
 
+//  endpoint to check if env file has api key for proxy
+// This endpoint checks if the ScraperAPI key is set in the environment variables
 app.get('/api/check-proxy', (req, res) => {
   const hasApiKey = !!process.env.SCRAPER_API_KEY; // check if api key exists
   res.json({ proxyAvailable: hasApiKey });
