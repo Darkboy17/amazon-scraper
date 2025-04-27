@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Amazon Scraper</title>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Amazon Product Scraper</h1>
+
+    </div>
+
+
+    <input type="text" id="keyword" placeholder="Enter search keyword"
+      onkeypress="if(event.key === 'Enter') document.getElementById('scrapeBtn').click();" />
+    <div>
+      <button id="scrapeBtn">Scrape</button>
+      <div class="proxy-toggle">
+        <label class="switch">
+          <input type="checkbox" id="proxyToggle">
+          <span class="slider round"></span>
+        </label>
+        <span class="switch-label">
+          Use Proxy
+        </span>
+        <p id="requestInfo"></p>
+      </div>
+    </div>
+
+    <div id="status">
+      <div id="scrapingStatus" class="hidden">
+        <span class="spinner"></span>
+        <span>Scraping Data...</span>
+        <span id="timer">(0s)</span>
+      </div>
+    </div>
+    <div id="resultsCount" class="results-counter">
+      <span id="itemCount"></span>
+      <span id="timeTaken"></span>
+    </div>
+
+
+    <div id="results"></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
