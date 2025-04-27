@@ -18,12 +18,12 @@
       onkeypress="if(event.key === 'Enter') document.getElementById('scrapeBtn').click();" />
     <div>
       <button id="scrapeBtn">Scrape</button>
-      <div class="proxy-toggle">
+      <div class="proxy-toggle" id="proxy-switch">
         <label class="switch">
           <input type="checkbox" id="proxyToggle">
           <span class="slider round"></span>
         </label>
-        <span class="switch-label">
+        <span class="switch-label" >
           Use Proxy
         </span>
         <p id="requestInfo"></p>

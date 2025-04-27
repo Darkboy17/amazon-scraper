@@ -131,6 +131,26 @@ app.get('/api/scrape', async (req, res) => {
   }
 });
 
+// Optional endpoint to check the ScraperAPI account usage and limits if using the proxy
+app.get('/api/scraperapi/account', async (req, res) => {
+  try {
+    // Make a GET request to the ScraperAPI account endpoint
+    const response = await axios.get(`https://api.scraperapi.com/account?api_key=${SCRAPER_API_KEY}`);
+    
+    // Send the account details as a JSON response
+    res.json(response.data);
+  } catch (error) {
+    // If an error occurs, log the error message and send a 503 response with an error message
+    console.error("Failed to fetch ScraperAPI account details:", error.message);
+    res.status(503).json({ error: "Failed to fetch ScraperAPI account details" });
+  }
+});
+
+app.get('/api/check-proxy', (req, res) => {
+  const hasApiKey = !!process.env.SCRAPER_API_KEY; // check if api key exists
+  res.json({ proxyAvailable: hasApiKey });
+});
+
 // Start the server and listen on the specified port
 // Log a message to indicate the server is running
 app.listen(PORT, () => {

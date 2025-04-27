@@ -7,10 +7,10 @@
 
 // this function fetches the account information from ScraperAPI and updates the UI
 // with the number of requests left and cost per request.
-export async function fetchAccountInfo(infoElement, apiKey) {
+export async function fetchAccountInfo(infoElement) {
 
     try {
-        const response = await fetch(`https://api.scraperapi.com/account?api_key=${apiKey}`);
+        const response = await fetch("http://localhost:3000/api/scraperapi/account");
         const data = await response.json();
 
         // sometimes the request limit is 5000 or 1000, so we need to set it to 1000 for the calculation
@@ -127,3 +127,19 @@ export function updateRequestInfo(infoElement, requestsLeft, costPerRequest) {
     With those remaining credits, you can make ${requestsLeft} requests (scrapes) this month.`;
 
 }
+
+
+// this function checks if the proxy is available and disables the toggle if not.
+export async function checkProxyAvailability(proxyToggle) {
+    try {
+      const response = await fetch('http://localhost:3000/api/check-proxy');
+      const data = await response.json();
+  
+      if (!data.proxyAvailable) {
+        proxyToggle.classList.add('hidden');
+      }
+
+    } catch (error) {
+      console.error('Error checking proxy availability:', error.message);
+    }
+  }

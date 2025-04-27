@@ -1,11 +1,11 @@
-import { fetchAccountInfo, renderStars, updateResultsCount, updateTimeTaken, resetAndStartTimer } from './utils';
+import { fetchAccountInfo, renderStars, updateResultsCount, updateTimeTaken, resetAndStartTimer, checkProxyAvailability } from './utils';
 import './style.css';
 
 /* A listener for the DOMContentLoaded event
   This ensures that the script runs after the DOM is fully loaded
   This is important because we need to access elements in the DOM
   and we want to make sure they are available before we try to access them */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
   // Add event listeners to various elements in the DOM
   const scrapeBtn = document.getElementById('scrapeBtn');
@@ -17,11 +17,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const resultsCount = document.getElementById('resultsCount');
   const itemCount = document.getElementById('itemCount');
   const timeTaken = document.getElementById('timeTaken');
+  const proxySwitch = document.getElementById('proxy-switch');
   const infoElement = document.getElementById("requestInfo");
 
+  // check if scraper API is present, if not, hide the proxy switch
+  await checkProxyAvailability(proxySwitch); 
 
-  // API key for ScraperAPI
-  const apiKey = import.meta.env.VITE_SCRAPER_API_KEY;
 
   // set infoElement to hidden
   infoElement.classList.add('hidden');
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let startTime;
   let timerInterval;
   let seconds = 0;
+  
 
   // useProxy variable to store the state of the proxy toggle
   var useProxy;
@@ -140,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (proxyToggle.checked) {
         infoElement.classList.remove('hidden');
         infoElement.innerHTML = '<div id="fetchAccountStatus"><span class="spinner_variation"></span>Updating Credits Usage...</div>';
-        await fetchAccountInfo(infoElement, apiKey);
+        await fetchAccountInfo(infoElement);
       }
     }
 
