@@ -1,151 +1,341 @@
-import { fetchAccountInfo, renderStars, updateResultsCount, updateTimeTaken, resetAndStartTimer, checkProxyAvailability } from './utils';
+import { createApiClient } from './api/apiClient.js';
+import { createSessionManager } from './auth/sessionManager.js';
+import { API_BASE_URL } from './config/appConfig.js';
+import { getAppElements } from './dom/elements.js';
 import './style.css';
+import { clearAuthError, escapeHTML, showAuthError, showAuthMessage } from './ui/messages.js';
+import {
+  formatDuration,
+  markSelectedRun,
+  renderProducts,
+  renderRecentRuns,
+  renderResultMetrics,
+} from './ui/renderers.js';
+import { initializeTheme } from './ui/theme.js';
+import { resetAndStartTimer } from './utils.js';
 
-/* A listener for the DOMContentLoaded event
-  This ensures that the script runs after the DOM is fully loaded
-  This is important because we need to access elements in the DOM
-  and we want to make sure they are available before we try to access them */
-document.addEventListener('DOMContentLoaded', async () => {
-
-  // Add event listeners to various elements in the DOM
-  const scrapeBtn = document.getElementById('scrapeBtn');
-  const keywordInput = document.getElementById('keyword');
-  const resultsDiv = document.getElementById('results');
-  const scrapingStatus = document.getElementById('scrapingStatus');
-  const timerElement = document.getElementById('timer');
-  const proxyToggle = document.getElementById('proxyToggle');
-  const resultsCount = document.getElementById('resultsCount');
-  const itemCount = document.getElementById('itemCount');
-  const timeTaken = document.getElementById('timeTaken');
-  const proxySwitch = document.getElementById('proxy-switch');
-  const infoElement = document.getElementById("requestInfo");
-
-  // check if scraper API is present, if not, hide the proxy switch
-  await checkProxyAvailability(proxySwitch); 
-
-
-  // set infoElement to hidden
-  infoElement.classList.add('hidden');
-
-  // Global variables for timer
-  let startTime;
-  let timerInterval;
-  let seconds = 0;
-  
-
-  // useProxy variable to store the state of the proxy toggle
-  var useProxy;
-
-  // Proxy toggle event listener
-  // This event listener will reload the page when the proxy toggle is changed
-  // This is to ensure that the proxy toggle state is reflected in the UI
-  // and the API request is made with the correct proxy setting
-  proxyToggle.addEventListener('click', async () => {
-
-    useProxy = proxyToggle.checked;
-
+document.addEventListener('DOMContentLoaded', () => {
+  const elements = getAppElements();
+  const apiClient = createApiClient(API_BASE_URL);
+  const sessionManager = createSessionManager(apiClient, {
+    onRefresh: (nextSession) => showSignedInState(nextSession.user),
+    onExpired: () => {
+      showSignedOutState();
+      showAuthError(elements, 'Session expired. Sign in again.');
+    },
   });
 
-  // listen for the scrapeBtn click event
-  scrapeBtn.addEventListener('click', async () => {
+  let authMode = 'sign-in';
+  let timerInterval;
+  let proxyAvailable = false;
+  let proxyQuota = null;
 
-    // set the useProxy variable to the state of the proxy toggle
-    useProxy = proxyToggle.checked;
+  initializeTheme(elements);
+  bindAuthEvents();
+  bindDashboardEvents();
+  initializeSession();
 
-    // reset the infoElement and hide it
-    infoElement.textContent = '';
-    infoElement.classList.add('hidden');
+  /**
+   * Authentication events stay grouped so tab, form, and logout behavior is easy to audit.
+   */
+  function bindAuthEvents() {
+    elements.signInTab.addEventListener('click', () => setAuthMode('sign-in'));
+    elements.signUpTab.addEventListener('click', () => setAuthMode('sign-up'));
 
-    // reset the resultsDiv and hide the results of the scrape
-    resultsCount.classList.add('hidden');
+    elements.authForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearAuthError(elements);
+      elements.authSubmit.disabled = true;
+      elements.authSubmit.textContent = authMode === 'sign-in' ? 'Signing in...' : 'Creating...';
 
-    // for measuring time taken to scrape
-    startTime = performance.now();
+      try {
+        const authPath = authMode === 'sign-in' ? '/api/auth/sign-in' : '/api/auth/sign-up';
+        const authSession = await apiClient.request(authPath, {
+          method: 'POST',
+          body: {
+            email: elements.emailInput.value.trim(),
+            password: elements.passwordInput.value,
+          },
+        });
 
-    // Get the keyword from the input field
-    const keyword = keywordInput.value.trim();
+        if (authSession.requiresSignIn || authSession.requiresEmailConfirmation) {
+          setAuthMode('sign-in');
+          elements.authForm.reset();
+          showAuthMessage(elements, authSession.message || 'Account created. Please sign in.', 'success');
+          return;
+        }
 
-    // If keyword is empty, show an error message
-    if (!keyword) {
-      resultsDiv.innerHTML = '<p class="error">Please enter a keyword.</p>';
+        sessionManager.setSession(authSession);
+        elements.authForm.reset();
+        showSignedInState(authSession.user);
+        await Promise.all([loadUserWorkspace(), checkProxyAvailability()]);
+      } catch (error) {
+        showAuthError(elements, error.message);
+      } finally {
+        elements.authSubmit.disabled = false;
+        elements.authSubmit.textContent = authMode === 'sign-in' ? 'Sign in' : 'Create account';
+      }
+    });
+
+    elements.signOutBtn.addEventListener('click', showLogoutDialog);
+    elements.cancelLogoutBtn.addEventListener('click', hideLogoutDialog);
+    elements.confirmLogoutBtn.addEventListener('click', () => {
+      hideLogoutDialog();
+      signUserOut();
+    });
+
+    elements.logoutDialog.addEventListener('click', (event) => {
+      if (event.target === elements.logoutDialog) {
+        hideLogoutDialog();
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !elements.logoutDialog.classList.contains('hidden')) {
+        hideLogoutDialog();
+      }
+    });
+  }
+
+  /**
+   * Dashboard events are separate from auth so scrape/history behavior can evolve independently.
+   */
+  function bindDashboardEvents() {
+    elements.scrapeForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await runScrape();
+    });
+
+    elements.recentRuns.addEventListener('click', async (event) => {
+      const runRow = event.target.closest('.run-row');
+
+      if (runRow?.dataset.scrapeId) {
+        await loadSavedScrape(runRow.dataset.scrapeId);
+      }
+    });
+
+    elements.recentRuns.addEventListener('keydown', async (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      const runRow = event.target.closest('.run-row');
+
+      if (runRow?.dataset.scrapeId) {
+        event.preventDefault();
+        await loadSavedScrape(runRow.dataset.scrapeId);
+      }
+    });
+  }
+
+  async function initializeSession() {
+    const session = sessionManager.getSession();
+
+    if (!session?.refreshToken) {
+      showSignedOutState();
       return;
     }
 
-    // Reset and start the timer, and update the timerInterval variable
-    timerInterval = resetAndStartTimer(scrapingStatus, resultsDiv, timerElement, seconds, timerInterval)
+    showSignedInState(session.user);
 
-    // Try to fetch the products from the API
     try {
-
-      // Ensure proxyToggle exists and get its value
-      const endpoint = `http://localhost:3000/api/scrape?keyword=${encodeURIComponent(keyword)}&useProxy=${useProxy}`;
-
-      // get the results from the API
-      const response = await fetch(endpoint);
-      const products = await response.json();
-
-      // if the response is not ok, throw an error
-      if (products.error) {
-        throw new Error(products.error);
-      }
-
-      // Check if the products array is not empty
-      if (products.length > 0) {
-
-        resultsDiv.innerHTML = products.map(product => `
-          <div class="product">
-          <h3>${product.title}</h3>
-          <div class="rating-container">
-              <span class="rating">${renderStars(product.rating)}</span>
-              <span class="reviews">(${product.reviews} reviews)</span>
-          </div>
-          <div class="image-container">
-            <img src="${product.image}" alt="${product.title}"> 
-          </div>
-          </div>
-        `).join('');
-
-        // Update the results count and item count
-        updateResultsCount(itemCount, resultsCount, products.length);
-
-        // Get the time taken to scrape
-        const duration = ((performance.now() - startTime) / 1000).toFixed(2);
-
-        // Update the time taken
-        updateTimeTaken(timeTaken, duration);
-
-      } else {
-
-        // If no products are found, display a message
-        resultsDiv.innerHTML = '<p class="error">No products found.</p>';
-
-      }
-
+      await sessionManager.refreshSession();
+      await Promise.all([loadUserWorkspace(), checkProxyAvailability()]);
     } catch (error) {
+      sessionManager.clearSession();
+      showSignedOutState();
+      showAuthError(elements, 'Session expired. Sign in again.');
+    }
+  }
 
-      // Handle errors and display them in the resultsDiv
-      resultsDiv.innerHTML = `<p class="error">You have been Rate-Limited. 
-      Please try again after a while or toggle "Use Proxy" above to continue scraping.</p>`;
+  function setAuthMode(mode) {
+    authMode = mode;
+    const isSignIn = mode === 'sign-in';
 
-    } finally {
+    elements.signInTab.classList.toggle('active', isSignIn);
+    elements.signUpTab.classList.toggle('active', !isSignIn);
+    elements.authSubmit.textContent = isSignIn ? 'Sign in' : 'Create account';
+    elements.passwordInput.autocomplete = isSignIn ? 'current-password' : 'new-password';
+    clearAuthError(elements);
+  }
 
-      // clear the timer interval
-      clearInterval(timerInterval);
+  function showSignedOutState() {
+    proxyQuota = null;
+    proxyAvailable = false;
+    elements.authPanel.classList.remove('hidden');
+    elements.dashboard.classList.add('hidden');
+    elements.resultsDiv.classList.add('results-empty');
+    elements.resultsDiv.innerHTML = 'No run selected.';
+    elements.recentRuns.innerHTML = '<p class="muted">No saved runs yet.</p>';
+  }
 
-      // hide the scraping status
-      scrapingStatus.classList.add('hidden');
+  function showSignedInState(user) {
+    elements.authPanel.classList.add('hidden');
+    elements.dashboard.classList.remove('hidden');
+    elements.userEmail.textContent = user?.email || 'Authenticated user';
+  }
 
-      // Reset keyword input
-      keywordInput.innerHTML = '';
+  function showLogoutDialog() {
+    elements.logoutDialog.classList.remove('hidden');
+    elements.cancelLogoutBtn.focus();
+  }
 
-      // check if the proxyToggle is checked and if so, show the infoElement and fetch the account info
-      if (proxyToggle.checked) {
-        infoElement.classList.remove('hidden');
-        infoElement.innerHTML = '<div id="fetchAccountStatus"><span class="spinner_variation"></span>Updating Credits Usage...</div>';
-        await fetchAccountInfo(infoElement);
+  function hideLogoutDialog() {
+    elements.logoutDialog.classList.add('hidden');
+    elements.signOutBtn.focus();
+  }
+
+  function signUserOut() {
+    sessionManager.clearSession();
+    showSignedOutState();
+  }
+
+  async function loadUserWorkspace() {
+    try {
+      const profile = await sessionManager.authFetch('/api/users/me');
+      const runs = profile.recentScrapes || [];
+
+      renderRecentRuns(elements, runs);
+      elements.totalRuns.textContent = String(profile.recentScrapeCount || runs.length);
+      updateProxyQuota(profile.proxyQuota);
+
+      if (runs[0]) {
+        elements.lastResultCount.textContent = String(runs[0].resultCount || 0);
+        elements.lastDuration.textContent = formatDuration(runs[0].durationMs || 0);
       }
+    } catch (error) {
+      elements.recentRuns.innerHTML = `<p class="message error">${escapeHTML(error.message)}</p>`;
+    }
+  }
+
+  async function checkProxyAvailability() {
+    try {
+      const data = await apiClient.rawJson('/api/check-proxy');
+      proxyAvailable = Boolean(data.proxyAvailable);
+      updateProxyControl();
+    } catch (error) {
+      proxyAvailable = false;
+      elements.proxyStatus.textContent = 'Offline';
+      updateProxyControl();
+    }
+  }
+
+  function updateProxyQuota(nextQuota) {
+    if (nextQuota) {
+      proxyQuota = {
+        limit: Number(nextQuota.limit || 10),
+        used: Number(nextQuota.used || 0),
+        remaining: Number(nextQuota.remaining ?? 10),
+      };
     }
 
-  });
+    updateProxyControl();
+  }
 
+  function updateProxyControl() {
+    if (!proxyAvailable) {
+      elements.proxyToggle.checked = false;
+      elements.proxyToggle.disabled = true;
+      elements.proxySwitch.classList.add('disabled');
+      elements.proxySwitch.title = 'Proxy scraping is unavailable.';
+      elements.proxyCreditsLabel.textContent = 'Proxy unavailable';
+      elements.proxyStatus.textContent = 'Unavailable';
+      return;
+    }
+
+    if (!proxyQuota) {
+      elements.proxyToggle.checked = false;
+      elements.proxyToggle.disabled = true;
+      elements.proxySwitch.classList.add('disabled');
+      elements.proxySwitch.title = 'Checking proxy scrape credits.';
+      elements.proxyCreditsLabel.textContent = 'Checking proxy credits';
+      elements.proxyStatus.textContent = 'Checking';
+      return;
+    }
+
+    const remaining = Math.max(0, Number(proxyQuota.remaining ?? proxyQuota.limit ?? 10));
+    const exhausted = remaining <= 0;
+
+    elements.proxyCreditsLabel.textContent = `${remaining} proxy ${remaining === 1 ? 'scrape' : 'scrapes'} left`;
+    elements.proxyStatus.textContent = `${remaining} left`;
+
+    if (exhausted) {
+      elements.proxyToggle.checked = false;
+      elements.proxyToggle.disabled = true;
+      elements.proxySwitch.classList.add('disabled');
+      elements.proxySwitch.title = 'You are out of proxy scrape credits.';
+      return;
+    }
+
+    elements.proxyToggle.disabled = false;
+    elements.proxySwitch.classList.remove('disabled');
+    elements.proxySwitch.title = `${remaining} proxy ${remaining === 1 ? 'scrape' : 'scrapes'} left.`;
+  }
+
+  async function runScrape() {
+    const keyword = elements.keywordInput.value.trim();
+
+    if (!keyword) {
+      elements.resultsDiv.classList.add('results-empty');
+      elements.resultsDiv.innerHTML = '<p class="message error">Enter a keyword before running a scrape.</p>';
+      return;
+    }
+
+    const startedAt = performance.now();
+    elements.infoElement.textContent = '';
+    elements.infoElement.classList.add('hidden');
+    elements.resultsCount.classList.add('hidden');
+    elements.scrapeBtn.disabled = true;
+    elements.scrapeBtn.textContent = 'Running...';
+    timerInterval = resetAndStartTimer(
+      elements.scrapingStatus,
+      elements.resultsDiv,
+      elements.timerElement,
+      timerInterval,
+    );
+
+    try {
+      const useProxy = elements.proxyToggle.checked && !elements.proxyToggle.disabled;
+      const payload = await sessionManager.authFetch(
+        `/api/scrape?keyword=${encodeURIComponent(keyword)}&useProxy=${useProxy}`,
+      );
+      const products = Array.isArray(payload) ? payload : payload.products || [];
+      const duration = ((performance.now() - startedAt) / 1000).toFixed(2);
+
+      renderProducts(elements, products);
+      renderResultMetrics(elements, products, duration);
+      updateProxyQuota(payload.proxyQuota);
+
+      await loadUserWorkspace();
+    } catch (error) {
+      elements.resultsDiv.classList.add('results-empty');
+      elements.resultsDiv.innerHTML = `<p class="message error">${escapeHTML(error.message)}</p>`;
+    } finally {
+      clearInterval(timerInterval);
+      elements.scrapingStatus.classList.add('hidden');
+      elements.scrapeBtn.disabled = false;
+      elements.scrapeBtn.textContent = 'Run scrape';
+    }
+  }
+
+  async function loadSavedScrape(scrapeId) {
+    elements.resultsDiv.classList.add('results-empty');
+    elements.resultsDiv.innerHTML = 'Loading saved scrape...';
+    elements.resultsCount.classList.add('hidden');
+
+    try {
+      const scrape = await sessionManager.authFetch(`/api/scrapes/${encodeURIComponent(scrapeId)}`);
+      const products = Array.isArray(scrape.products) ? scrape.products : [];
+      const duration = (Number(scrape.durationMs || 0) / 1000).toFixed(2);
+
+      renderProducts(elements, products);
+      renderResultMetrics(elements, products, duration);
+      elements.lastResultCount.textContent = String(scrape.resultCount || products.length);
+      elements.lastDuration.textContent = formatDuration(scrape.durationMs || 0);
+      markSelectedRun(elements, scrapeId);
+    } catch (error) {
+      elements.resultsDiv.classList.add('results-empty');
+      elements.resultsDiv.innerHTML = `<p class="message error">${escapeHTML(error.message)}</p>`;
+    }
+  }
 });

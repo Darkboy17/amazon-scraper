@@ -1,50 +1,152 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
   <meta charset="UTF-8" />
-  <title>Amazon Scraper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#ff9900" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <title>Amazon Scraper Pro</title>
+  <script>
+    const storedTheme = localStorage.getItem('amazonScraper.theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.dataset.theme = storedTheme || (prefersDark ? 'dark' : 'light');
+  </script>
 </head>
 
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>Amazon Product Scraper</h1>
+  <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">
+    <span class="theme-toggle-icon" aria-hidden="true"></span>
+    <span class="theme-toggle-text">Light</span>
+  </button>
 
-    </div>
+  <main class="app-shell">
+    <section class="auth-panel" id="authPanel">
+      <div class="auth-copy">
+        <p class="eyebrow">Private scraper workspace</p>
+        <h1>Amazon Scraper</h1>
+        <p>Search Amazon products, compare ratings and review counts, save every scrape to your account, and revisit past results anytime.</p>
+      </div>
 
+      <form class="auth-card" id="authForm">
+        <div class="auth-tabs" aria-label="Authentication mode">
+          <button type="button" class="auth-tab active" id="signInTab">Sign in</button>
+          <button type="button" class="auth-tab" id="signUpTab">Create account</button>
+        </div>
 
-    <input type="text" id="keyword" placeholder="Enter search keyword"
-      onkeypress="if(event.key === 'Enter') document.getElementById('scrapeBtn').click();" />
-    <div>
-      <button id="scrapeBtn">Scrape</button>
-      <div class="proxy-toggle" id="proxy-switch">
-        <label class="switch">
-          <input type="checkbox" id="proxyToggle">
-          <span class="slider round"></span>
-        </label>
-        <span class="switch-label" >
-          Use Proxy
-        </span>
-        <p id="requestInfo"></p>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required placeholder="you@example.com" />
+
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required minlength="6" placeholder="••••••••" />
+
+        <p class="message error hidden" id="authError"></p>
+        <button class="primary-action" id="authSubmit" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <section class="dashboard hidden" id="dashboard">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Scraper console</p>
+          <h1>Amazon Scraper</h1>
+        </div>
+        <div class="user-menu">
+          <span id="userEmail"></span>
+          <button class="ghost-action" id="signOutBtn" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <section class="metrics-grid" aria-label="Scraper metrics">
+        <div class="metric">
+          <span>Total runs</span>
+          <strong id="totalRuns">0</strong>
+        </div>
+        <div class="metric">
+          <span>Last result count</span>
+          <strong id="lastResultCount">0</strong>
+        </div>
+        <div class="metric">
+          <span>Last duration</span>
+          <strong id="lastDuration">0.00s</strong>
+        </div>
+        <div class="metric">
+          <span>Proxy status</span>
+          <strong id="proxyStatus">Checking</strong>
+        </div>
+      </section>
+
+      <section class="workbench">
+        <form class="control-panel" id="scrapeForm">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Run target</p>
+              <h2>Product search</h2>
+            </div>
+            <div class="proxy-toggle" id="proxy-switch">
+              <label class="switch" aria-label="Use proxy">
+                <input type="checkbox" id="proxyToggle" />
+                <span class="slider"></span>
+              </label>
+              <span>Proxy</span>
+              <span id="proxyCreditsLabel" class="proxy-credits-label">Checking proxy credits</span>
+            </div>
+          </div>
+
+          <div class="search-row">
+            <input type="text" id="keyword" placeholder="Search keyword" autocomplete="off" />
+            <button class="primary-action" id="scrapeBtn" type="submit">Run scrape</button>
+          </div>
+
+          <div id="status" class="status-row">
+            <div id="scrapingStatus" class="hidden">
+              <span class="spinner"></span>
+              <span>Scraping data</span>
+              <span id="timer">(0.00s)</span>
+            </div>
+            <p id="requestInfo" class="message success hidden"></p>
+          </div>
+        </form>
+
+        <aside class="history-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Past Scrapes</p>
+              <h2>Recent runs</h2>
+            </div>
+          </div>
+          <div id="recentRuns" class="recent-runs"></div>
+        </aside>
+      </section>
+
+      <section class="results-panel">
+        <div class="results-header">
+          <div>
+            <p class="eyebrow">Output</p>
+            <h2>Product results</h2>
+          </div>
+          <div id="resultsCount" class="results-counter hidden">
+            <span id="itemCount"></span>
+            <span id="timeTaken"></span>
+          </div>
+        </div>
+        <div id="results" class="results-empty">Run a scrape to populate the product grid.</div>
+      </section>
+    </section>
+  </main>
+
+  <div class="dialog-backdrop hidden" id="logoutDialog" role="dialog" aria-modal="true" aria-labelledby="logoutDialogTitle">
+    <div class="dialog-card">
+      <p class="eyebrow">End session</p>
+      <h2 id="logoutDialogTitle">Sign out of Amazon Scraper?</h2>
+      <p>Your saved scrapes will stay in your account. You can sign back in anytime to continue scraping.</p>
+      <div class="dialog-actions">
+        <button class="ghost-action" id="cancelLogoutBtn" type="button">Cancel</button>
+        <button class="primary-action" id="confirmLogoutBtn" type="button">Sign out</button>
       </div>
     </div>
-
-    <div id="status">
-      <div id="scrapingStatus" class="hidden">
-        <span class="spinner"></span>
-        <span>Scraping Data...</span>
-        <span id="timer">(0s)</span>
-      </div>
-    </div>
-    <div id="resultsCount" class="results-counter">
-      <span id="itemCount"></span>
-      <span id="timeTaken"></span>
-    </div>
-
-
-    <div id="results"></div>
   </div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 

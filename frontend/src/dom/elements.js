@@ -1,0 +1,41 @@
+/**
+ * Collects DOM references once and makes missing IDs fail close to startup.
+ */
+export function getAppElements() {
+  return {
+    themeToggle: document.getElementById('themeToggle'),
+    themeToggleText: document.getElementById('themeToggle')?.querySelector('.theme-toggle-text'),
+    authPanel: document.getElementById('authPanel'),
+    dashboard: document.getElementById('dashboard'),
+    authForm: document.getElementById('authForm'),
+    authError: document.getElementById('authError'),
+    authSubmit: document.getElementById('authSubmit'),
+    signInTab: document.getElementById('signInTab'),
+    signUpTab: document.getElementById('signUpTab'),
+    emailInput: document.getElementById('email'),
+    passwordInput: document.getElementById('password'),
+    signOutBtn: document.getElementById('signOutBtn'),
+    logoutDialog: document.getElementById('logoutDialog'),
+    cancelLogoutBtn: document.getElementById('cancelLogoutBtn'),
+    confirmLogoutBtn: document.getElementById('confirmLogoutBtn'),
+    userEmail: document.getElementById('userEmail'),
+    scrapeForm: document.getElementById('scrapeForm'),
+    scrapeBtn: document.getElementById('scrapeBtn'),
+    keywordInput: document.getElementById('keyword'),
+    resultsDiv: document.getElementById('results'),
+    scrapingStatus: document.getElementById('scrapingStatus'),
+    timerElement: document.getElementById('timer'),
+    proxyToggle: document.getElementById('proxyToggle'),
+    proxySwitch: document.getElementById('proxy-switch'),
+    proxyCreditsLabel: document.getElementById('proxyCreditsLabel'),
+    proxyStatus: document.getElementById('proxyStatus'),
+    resultsCount: document.getElementById('resultsCount'),
+    itemCount: document.getElementById('itemCount'),
+    timeTaken: document.getElementById('timeTaken'),
+    infoElement: document.getElementById('requestInfo'),
+    recentRuns: document.getElementById('recentRuns'),
+    totalRuns: document.getElementById('totalRuns'),
+    lastResultCount: document.getElementById('lastResultCount'),
+    lastDuration: document.getElementById('lastDuration'),
+  };
+}
