@@ -1,4 +1,4 @@
-# Amazon Scraper
+# Amazon Web Scraper
 
 A full-stack Amazon product scraper with a Vite frontend, an Express backend, Supabase authentication, scrape history, and optional ScraperAPI proxy support.
 
